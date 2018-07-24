@@ -6,11 +6,11 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,terminate/2, code_change/3]).
 
--record(state, {
-        apns_host :: string(),
-        apns_port :: integer(),
-        connections = orddict:new() :: orddict:orddict(file:name_all(), port())
-         }).
+%-record(state, {
+%        apns_host :: string(),
+%        apns_port :: integer(),
+%        connections = orddict:new() :: orddict:orddict(file:name_all(), port())
+%         }).
 
 -define(CACHENAME, ?MODULE).
 
@@ -26,114 +26,59 @@
     lookup_by_date(DateFrom, DateTo) -> gen_server:call(?MODULE,{find_period,DateFrom, DateTo}).
 
     cleaning() ->
-	Now = os:system_time(second)
-	,delete_expired(ets:select(CACHENAME,[{{'$1','$2','$3'},[{'<','$3',Now}],[['$1']
-    delete_expired(ExpiredList) ->
-	case ExpiredList of
-    <------>[] -> ok;
-<---	--->[[H]|T] -> ets:delete(CACHENAME,H)
-<---	--->,delete_expired(T)
-	end.
+	%Now = 
+	os:system_time(second).
+	%,delete_expired(ets:select(CACHENAME,[{{'$1','$2','$3'},[{'<','$3',Now}],[['$1'])).
+
+%    delete_expired(ExpiredList) ->
+%	case ExpiredList of
+%	    [] -> ok;
+%	    [[H]|T] -> ets:delete(?CACHENAME,H)
+%	    ,delete_expired(T)
+%	end.
 
     init([{drop_interval, DrTime}]) ->
         ok = timer:start()
-	,{ok, _TRef} = timer:apply_interval(DrTime*1000, cache_server, cleaning, []),
-	,{ok, ets:new(CACHENAME,[public,named_table])}.
+	,{ok, _TRef} = timer:apply_interval(DrTime*1000, cache_server, cleaning, [])
+	,{ok, ets:new(?CACHENAME,[public,named_table])}.
 
     handle_call({insert,Key,Value,Seconds},_From,State) ->
-	
-	,Reply = ets:insert(CACHENAME,{Key,Value,Seconds+Now)})
-	,{reply, Reply, State}.
-
-
+	Now = calendar:datetime_to_gregorian_seconds({date(), time()})
+	,Reply = ets:insert(?CACHENAME,{Key,Value,Seconds+Now})
+	,{reply, Reply, State};
 
     handle_call({find,Key}, _From, State) ->
 	Now = calendar:datetime_to_gregorian_seconds({date(), time()})
-	,Reply = case ets:lookup(CACHENAME,Key) of
+	,Reply = case ets:lookup(?CACHENAME,Key) of
 		    [] -> []
 		    ;[{_,_,TimeOfRecord}] when Now > TimeOfRecord -> []
 		    ;[{_,Value,_}] -> Value
 		 end
-	,{reply, Reply, State}.
+	,{reply, Reply, State};
 
     handle_call({find_period,DateFrom, DateTo}, _From, State) ->
 	FromSec = calendar:datetime_to_gregorian_seconds(DateFrom)
 	,ToSec = calendar:datetime_to_gregorian_seconds(DateTo)
-	,Reply = get_in_period(ets:first(CACHENAME), FromSec, ToSec, [])
-	,{reply, Reply, Tab}.
-
-
-
-	get_in_period(Next,From,To,Acc) ->
-	    case Next of
-    handle_call({insert,Key,Value,Seconds}, _From, State) ->
-	Reply = ets:insert(CACHENAME,{Key,Value,Seconds+os:system_time(second)})
-	,{reply, Reply, State}.
+	,Reply = get_in_period(ets:first(?CACHENAME), FromSec, ToSec, [])
+	,{reply, Reply, State};
 
     handle_call({stop}, _From, State) ->
 	{stop, normal, stopped, State}.
 
 
-get_emo(Who) -> gen_server:call(?MODULE, {get, Who}).
-put_emo({Who, Status}, Time) -> gen_server:call(?MODULE, {put, Who, Status, Time}).
-get_by_date(FromDate, ToDate) -> gen_server:call(?MODULE, {get_by_date, FromDate, ToDate}).
+    get_in_period('$end_of_table',_,_,Acc) ->
+        {ok, Acc};
+    get_in_period(Next, FromSec, ToSec, Acc) ->
+	[{_, Status, Exp}] = ets:lookup(?CACHENAME, Next),
+	if
+	    Exp >= FromSec,	Exp =< ToSec ->
+		get_in_period(ets:next(?CACHENAME,Next),FromSec,ToSec,[{binary_to_list(Next), binary_to_list(Status)}|Acc]);
+	    true -> 
+		get_in_period(ets:next(?CACHENAME,Next),FromSec,ToSec,Acc)
+	end.
 
-get_by_date('$end_of_table',_,_,Acc) ->
-    {ok, Acc};
-get_by_date(Name, FromSec, ToSec, Acc) ->
-    [{_, Status, Exp}] = ets:lookup(?MODULE, Name),
-    if
-	Exp >= FromSec,	Exp =< ToSec ->
-	    get_by_date(ets:next(?MODULE,Name),FromSec,ToSec,[{binary_to_list(Name), binary_to_list(Status)}|Acc]);
-	true -> 
-	    get_by_date(ets:next(?MODULE,Name),FromSec,ToSec,Acc)
-end.
-
-
+	
     handle_cast(_Msg, State) -> {noreply, State}.
     handle_info(_Info, State) -> {noreply, State}.
     terminate(_Reason, _State) -> ok.
     code_change(_OldVsn, State, _Extra) -> {ok, State}.
-
-
--behaviour(supervisor).
--export([start_link/0, init/1]).
-
-start_link() -> supervisor:start_link({local,?MODULE},?MODULE,[]).
-
-init([]) -> 
-
-
-    SupervisorSpecification = #{
-        strategy => one_for_one,
-        intensity => 10,
-        period => 60},
-
-    ChildSpecifications =
-        [#{id => cache_server_genserver,
-           start => { cache_server_genserver, start_link, []},
-           restart => permanent,
-           shutdown => 2000,
-           type => worker,
-           modules => [some_worker]}
-%,         #{id => other_worker,
-%           start => {other_worker, start_link, []},
-%           restart => permanent,
-%           shutdown => 2000,
-%           type => worker,
-%           modules => [other_worker]}
-        ],
-    {ok, {SupervisorSpecification, ChildSpecifications}}.
-
-
-
-%GenServer = [{cache_server_gensrv,{}}]
-%    ,{ok,{{one_for_one,1,5},GenServer}}.
-
-%init()
-%s t a r t _ l i n k ( ) ->
-%s u p e r v i s o r : s t a r t _ l i n k ( { l o c a l , 7M0DULE}, 7M0DULE, [ ] ) .
-%init(FileName) ->
-%UsrChild = { u s r , { u s r , s t a r t l i n k , [ ] } ,
-%permanent, 2000, worker, [usr, u s r d b ] } ,
-%{ o k , { { o n e _ f o r _ a l l , l , l } , [UsrChild]}}.

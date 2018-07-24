@@ -13,12 +13,12 @@ init([]) ->
         period => 60},
 
     ChildSpecifications =
-        [#{id => cache_server_genserver,
-           start => { cache_server_genserver, start_link, []},
+        [#{id => cache_server,
+           start => { cache_server, start_link, []},
            restart => permanent,
            shutdown => 2000,
            type => worker,
-           modules => [cache_server_genserver]}
+           modules => [cache_server]}
 %,         #{id => other_worker,
 %           start => {other_worker, start_link, []},
 %           restart => permanent,
