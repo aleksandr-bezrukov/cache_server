@@ -26,16 +26,16 @@
     lookup_by_date(DateFrom, DateTo) -> gen_server:call(?MODULE,{find_period,DateFrom, DateTo}).
 
     cleaning() ->
-	%Now = 
-	os:system_time(second).
-	%,delete_expired(ets:select(CACHENAME,[{{'$1','$2','$3'},[{'<','$3',Now}],[['$1'])).
+	Now = calendar:datetime_to_gregorian_seconds({date(), time()})
+	%os:system_time(second).
+	,delete_expired(ets:select(?CACHENAME,[{{'$1','$2','$3'},[{'<','$3',Now}],[['$1']]}])).
 
-%    delete_expired(ExpiredList) ->
-%	case ExpiredList of
-%	    [] -> ok;
-%	    [[H]|T] -> ets:delete(?CACHENAME,H)
-%	    ,delete_expired(T)
-%	end.
+    delete_expired(ExpiredList) ->
+	case ExpiredList of
+	    [] -> ok;
+	    [[H]|T] -> ets:delete(?CACHENAME,H)
+	    ,delete_expired(T)
+	end.
 
     init([{drop_interval, DrTime}]) ->
         ok = timer:start()
@@ -66,13 +66,13 @@
 	{stop, normal, stopped, State}.
 
 
-    get_in_period('$end_of_table',_,_,Acc) ->
-        {ok, Acc};
+    get_in_period('$end_of_table',_,_,Acc) -> 
+	Acc;
     get_in_period(Next, FromSec, ToSec, Acc) ->
-	[{_, Status, Exp}] = ets:lookup(?CACHENAME, Next),
+	[{_, Value, ExpirationTime}] = ets:lookup(?CACHENAME, Next),
 	if
-	    Exp >= FromSec,	Exp =< ToSec ->
-		get_in_period(ets:next(?CACHENAME,Next),FromSec,ToSec,[{binary_to_list(Next), binary_to_list(Status)}|Acc]);
+	    ExpirationTime >= FromSec, ExpirationTime =< ToSec ->
+		get_in_period(ets:next(?CACHENAME,Next),FromSec,ToSec,[{Next, Value}|Acc]);
 	    true -> 
 		get_in_period(ets:next(?CACHENAME,Next),FromSec,ToSec,Acc)
 	end.
